@@ -1,0 +1,1629 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>肉體改造廠 ｜ 每日進廠維修・極限升級</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome 圖示 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Chart.js 圖表引擎 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- OneSignal Web SDK v16 -->
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+    window.isOneSignalReady = false;
+    window.oneSignalDomainRestricted = false;
+
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      try {
+        await OneSignal.init({
+          appId: "eda1a692-851a-447f-bc5d-e01d0322542b",
+          notifyButton: { enable: false },
+          allowLocalhostAsSecureOrigin: true
+        });
+        
+        window.isOneSignalReady = true;
+
+        // 監聽推播訂閱狀態變更
+        if (OneSignal.User && OneSignal.User.PushSubscription) {
+          OneSignal.User.PushSubscription.addEventListener("change", async function(event) {
+            if (event.current && event.current.optedIn) {
+              const playerId = OneSignal.User.PushSubscription.id;
+              console.log("OneSignal 訂閱成功，Player ID:", playerId);
+              if (appState.currentUser && playerId) {
+                appState.currentUser.playerId = playerId;
+                syncPushIdToBackend(appState.currentUser.id, playerId);
+                updatePushStatusUI(true);
+              }
+            } else {
+              updatePushStatusUI(false);
+            }
+          });
+        }
+      } catch (err) {
+        // 捕捉在預覽環境或非 GitHub Pages 網域下的安全限制警告，不中斷系統運行
+        console.warn("OneSignal 網域安全防護提示（推播通知將在發布至 https://cpyang210.github.io 時正式運作）：", err.message);
+        window.isOneSignalReady = false;
+        window.oneSignalDomainRestricted = true;
+        updatePushStatusUI(false);
+      }
+    });
+  </script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+    body {
+      font-family: 'Inter', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+    .progress-bar-smooth {
+      transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col antialiased select-none pb-12">
+
+  <!-- 頂部導航狀態列 -->
+  <header class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-2.5 shadow-sm">
+    <div class="max-w-xl mx-auto flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <div class="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-sm text-base">
+          🛠️
+        </div>
+        <div>
+          <h1 class="font-bold text-base text-slate-800 leading-tight">肉體改造廠</h1>
+          <p class="text-[10px] text-slate-400 font-medium">每日進廠維修・極限升級</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <div id="autoSaveIndicator" class="hidden items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500 transition-all">
+          <i class="fa-solid fa-check mr-1 text-emerald-500"></i>
+          <span id="autoSaveText">已同步</span>
+        </div>
+
+        <div id="streakBadge" class="hidden items-center space-x-1 px-2 py-1 rounded-full bg-orange-50 border border-orange-200 text-orange-600 shadow-2xs">
+          <span class="text-xs">🔥</span>
+          <span class="text-[11px] font-black">連續 <span id="streakCount">0</span> 天</span>
+        </div>
+
+        <div id="currentUserBadge" class="hidden items-center space-x-1.5 pl-1.5 pr-1 py-1 rounded-full bg-slate-100 border border-slate-200">
+          <div id="userAvatarDot" class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-slate-800 border border-black/10"></div>
+          <span id="userNameText" class="text-xs font-bold text-slate-700 max-w-[80px] truncate"></span>
+          <button onclick="logoutUser()" title="切換身分" class="w-6 h-6 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-500 active:scale-95 transition-transform">
+            <i class="fa-solid fa-arrow-right-from-bracket text-[10px]"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 身分選擇區 (未登入時呈現) -->
+  <section id="loginSection" class="flex-1 flex flex-col items-center justify-center px-4 py-8">
+    <div class="w-full max-w-xl flex flex-col items-center">
+      <div class="w-16 h-16 rounded-3xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl mb-4 shadow-sm">
+        <i class="fa-solid fa-id-card-clip"></i>
+      </div>
+      <h2 class="text-xl font-bold text-slate-800 text-center mb-1">進廠成員身分登記</h2>
+      <p class="text-xs text-slate-500 text-center mb-6">選擇或建立專屬檔案，檢核水分代謝、飲食配給與動力輸出數據。</p>
+
+      <!-- 使用者卡片容器 -->
+      <div id="userCardsContainer" class="w-full grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+        <div class="col-span-full py-6 text-center text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200">
+          <i class="fa-solid fa-spinner fa-spin mr-1 text-emerald-500"></i>
+          <span class="text-xs font-semibold text-slate-600">正在讀取成員檔案...</span>
+        </div>
+      </div>
+
+      <!-- 新增身分卡片 -->
+      <div class="w-full bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <label class="block text-xs font-semibold text-slate-600 mb-2">建立新成員身分：</label>
+        <div class="flex items-center space-x-2 mb-3">
+          <input id="newUserNameInput" type="text" placeholder="輸入成員姓名 (不可重複)..." maxlength="12"
+            class="flex-1 px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all">
+          <button onclick="addNewUser()"
+            class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 active:scale-95 transition-all shadow-sm flex items-center space-x-1 shrink-0">
+            <i class="fa-solid fa-user-plus text-xs"></i>
+            <span>新增</span>
+          </button>
+        </div>
+
+        <div class="pt-2 border-t border-slate-100">
+          <div class="text-[11px] text-slate-400 font-medium mb-1.5 flex items-center justify-between">
+            <span>挑選個人代表色：</span>
+            <span id="selectedColorName" class="text-slate-500">薄荷奶綠</span>
+          </div>
+          <div id="colorPaletteContainer" class="grid grid-cols-6 sm:grid-cols-12 gap-2"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 主操作區 (登入後呈現) -->
+  <main id="appSection" class="hidden flex-1 flex flex-col max-w-xl w-full mx-auto px-4 py-3 space-y-3">
+    
+    <!-- 第一層主模式切換 -->
+    <div class="grid grid-cols-3 p-1 bg-slate-200/80 rounded-2xl gap-1">
+      <button id="btnModeRecord" onclick="switchMainTab('record')"
+        class="py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center space-x-1.5 transition-all shadow-sm bg-white text-emerald-700">
+        <i class="fa-regular fa-calendar-check"></i>
+        <span>每日紀錄</span>
+      </button>
+      <button id="btnModeTrends" onclick="switchMainTab('trends')"
+        class="py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center space-x-1.5 transition-all text-slate-600 hover:text-slate-800">
+        <i class="fa-solid fa-chart-line"></i>
+        <span>改造趨勢</span>
+      </button>
+      <button id="btnModeKnowledge" onclick="switchMainTab('knowledge')"
+        class="py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center space-x-1.5 transition-all text-slate-600 hover:text-slate-800">
+        <i class="fa-solid fa-book-open"></i>
+        <span>知識百科</span>
+      </button>
+    </div>
+
+    <!-- 模式一：每日紀錄區塊 -->
+    <div id="recordView" class="space-y-3">
+      <!-- 日期切換列 -->
+      <div class="bg-white p-2.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between gap-2">
+        <button onclick="switchDate(-1)" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center active:scale-95 transition-transform shrink-0">
+          <i class="fa-solid fa-chevron-left text-xs"></i>
+        </button>
+        
+        <div class="relative flex-1 h-9 rounded-xl bg-slate-100 border border-slate-200 hover:border-slate-300 flex items-center justify-center px-3 cursor-pointer overflow-hidden">
+          <div class="flex items-center space-x-2 text-xs sm:text-sm font-bold text-slate-800 pointer-events-none">
+            <i class="fa-regular fa-calendar text-emerald-600"></i>
+            <span id="dateDisplayText">載入中...</span>
+          </div>
+          <input id="datePickerInput" type="date" onchange="onDatePickerChange(this.value)"
+            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+        </div>
+
+        <button onclick="switchDate(1)" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center active:scale-95 transition-transform shrink-0">
+          <i class="fa-solid fa-chevron-right text-xs"></i>
+        </button>
+
+        <button onclick="goToToday()" class="h-9 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 active:scale-95 transition-transform shrink-0">
+          今天
+        </button>
+      </div>
+
+      <!-- 今日進廠維修評級與即時進度條 -->
+      <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <span class="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center text-xs">
+              🛠️
+            </span>
+            <span class="text-xs font-bold text-slate-700">今日改造維修進度</span>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span id="maintenanceRatingBadge" class="text-xs font-bold text-slate-500">🌱 剛進廠・準備啟動</span>
+            <span id="maintenancePercentText" class="text-xs font-extrabold text-emerald-600 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100">0%</span>
+          </div>
+        </div>
+        <div class="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+          <div id="maintenanceProgressBar" class="bg-gradient-to-r from-emerald-400 to-teal-500 h-2.5 rounded-full progress-bar-smooth" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- 紀錄次分頁按鈕：飲水、飲食、運動 -->
+      <div class="grid grid-cols-3 p-1 bg-slate-100 rounded-xl gap-1">
+        <button id="tabWaterBtn" onclick="switchRecordTab('water')"
+          class="py-2 rounded-lg text-xs font-bold transition-all bg-white text-sky-600 shadow-sm flex items-center justify-center space-x-1">
+          <i class="fa-solid fa-droplet"></i>
+          <span>每日飲水</span>
+        </button>
+        <button id="tabDietBtn" onclick="switchRecordTab('diet')"
+          class="py-2 rounded-lg text-xs font-bold transition-all text-slate-500 hover:text-slate-800 flex items-center justify-center space-x-1">
+          <i class="fa-solid fa-utensils"></i>
+          <span>飲食管理</span>
+        </button>
+        <button id="tabWorkoutBtn" onclick="switchRecordTab('workout')"
+          class="py-2 rounded-lg text-xs font-bold transition-all text-slate-500 hover:text-slate-800 flex items-center justify-center space-x-1">
+          <i class="fa-solid fa-fire"></i>
+          <span>運動任務</span>
+        </button>
+      </div>
+
+      <!-- 紀錄面板 1：每日飲水 -->
+      <section id="panelWater" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <span class="w-7 h-7 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center text-xs">
+              <i class="fa-solid fa-droplet"></i>
+            </span>
+            <h3 class="font-bold text-sm text-slate-800">飲水進度監控</h3>
+          </div>
+          <div class="flex items-center space-x-2">
+            <button onclick="openNotificationModal()" title="設定定時推播提醒" class="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-lg text-xs font-bold flex items-center space-x-1">
+              <i class="fa-regular fa-bell text-xs"></i>
+              <span>提醒</span>
+            </button>
+            <button onclick="openGoalModal()" title="修改目標設定" class="text-slate-400 hover:text-sky-600 p-1 flex items-center space-x-1 text-xs font-semibold">
+              <i class="fa-solid fa-sliders text-xs"></i>
+              <span>目標</span>
+            </button>
+            <span id="waterPercentBadge" class="text-xs font-bold text-sky-600 px-2 py-0.5 rounded-full bg-sky-50 border border-sky-100">0%</span>
+          </div>
+        </div>
+
+        <div class="bg-sky-50/70 p-4 rounded-xl text-center">
+          <div class="text-3xl font-extrabold text-sky-700 tracking-tight">
+            <span id="displayWaterAmount">0</span> <span id="lblWaterGoalTarget" class="text-xs font-semibold text-sky-500">/ 2500 ml</span>
+          </div>
+          <div class="w-full bg-sky-200/60 rounded-full h-2.5 mt-3 overflow-hidden">
+            <div id="waterProgressBar" class="bg-sky-500 h-2.5 rounded-full progress-bar-smooth" style="width: 0%"></div>
+          </div>
+          <div id="lblWaterDiff" class="text-[11px] font-bold text-sky-600 mt-2 flex items-center justify-center space-x-1">
+            <span>💧 還差 2500 ml 達標</span>
+          </div>
+        </div>
+
+        <!-- 飲水快捷鍵 -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-semibold text-slate-500">自訂常用容量：</span>
+            <button onclick="openAddWaterQuickModal()" class="text-[11px] font-bold text-sky-600 hover:text-sky-700 flex items-center space-x-0.5">
+              <i class="fa-solid fa-plus text-[9px]"></i>
+              <span>新增容量</span>
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <div id="waterQuickButtonsContainer" class="flex flex-wrap gap-2"></div>
+            <button onclick="resetWater()" class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold text-xs active:scale-95 transition-all">
+              歸零
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-2 pt-2 border-t border-slate-100">
+          <label class="flex items-center space-x-3 p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" id="chkWaterMorning" class="auto-save-input w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500">
+            <span class="text-xs font-semibold text-slate-700">🌅 晨起第一杯溫水 (300~500ml)</span>
+          </label>
+          <label class="flex items-center space-x-3 p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" id="chkWaterWorkout" class="auto-save-input w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500">
+            <span class="text-xs font-semibold text-slate-700">⚡ 運動前後足量補水</span>
+          </label>
+          <label class="flex items-center space-x-3 p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" id="chkWaterNoSugar" class="auto-save-input w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500">
+            <span class="text-xs font-semibold text-slate-700">🚫 全天無糖飲料（無糖茶/黑咖啡可）</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- 紀錄面板 2：飲食管理 -->
+      <section id="panelDiet" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <span class="w-7 h-7 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center text-xs">
+              <i class="fa-solid fa-utensils"></i>
+            </span>
+            <h3 class="font-bold text-sm text-slate-800">飲食攝取與打卡</h3>
+          </div>
+          <button onclick="openGoalModal()" title="修改目標設定" class="text-slate-400 hover:text-amber-600 p-1 flex items-center space-x-1 text-xs font-semibold">
+            <i class="fa-solid fa-sliders text-xs"></i>
+            <span>目標</span>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="bg-amber-50/60 p-3 rounded-xl border border-amber-100/80 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label class="text-[11px] font-bold text-amber-900">🔥 總熱量 (kcal)</label>
+              <span id="badgeCalGoal" class="text-[10px] font-semibold text-amber-700">目標: 1800</span>
+            </div>
+            <input id="inputCalories" type="number" placeholder="例如: 1850"
+              class="auto-save-input w-full px-2.5 py-1.5 text-sm font-bold bg-white border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500"
+              oninput="updateDietGoalProgress()">
+            <div class="w-full bg-amber-200/60 rounded-full h-1.5 overflow-hidden mt-1">
+              <div id="barCalProgress" class="bg-amber-500 h-1.5 rounded-full progress-bar-smooth" style="width: 0%"></div>
+            </div>
+            <div id="lblCalDiff" class="text-[10px] font-bold text-amber-700 flex items-center justify-between pt-0.5">
+              <span>剩餘額度：1800 kcal</span>
+              <span id="pctCal">0%</span>
+            </div>
+          </div>
+
+          <div class="bg-rose-50/60 p-3 rounded-xl border border-rose-100/80 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label class="text-[11px] font-bold text-rose-900">🥩 蛋白質 (g)</label>
+              <span id="badgeProteinGoal" class="text-[10px] font-semibold text-rose-700">目標: 110g</span>
+            </div>
+            <input id="inputProtein" type="number" placeholder="例如: 110"
+              class="auto-save-input w-full px-2.5 py-1.5 text-sm font-bold bg-white border border-rose-200 rounded-lg focus:ring-2 focus:ring-rose-500"
+              oninput="updateDietGoalProgress()">
+            <div class="w-full bg-rose-200/60 rounded-full h-1.5 overflow-hidden mt-1">
+              <div id="barProteinProgress" class="bg-rose-500 h-1.5 rounded-full progress-bar-smooth" style="width: 0%"></div>
+            </div>
+            <div id="lblProteinDiff" class="text-[10px] font-bold text-rose-700 flex items-center justify-between pt-0.5">
+              <span>還差 110 g 達標</span>
+              <span id="pctProtein">0%</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-2">餐次檢核打卡：</label>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <label class="flex items-center space-x-2 p-2 rounded-xl bg-slate-50 hover:bg-slate-100 cursor-pointer">
+              <input type="checkbox" id="chkMealBreakfast" class="auto-save-input w-4 h-4 text-amber-600 rounded border-slate-300">
+              <span class="text-xs font-semibold text-slate-700">🍳 早餐</span>
+            </label>
+            <label class="flex items-center space-x-2 p-2 rounded-xl bg-slate-50 hover:bg-slate-100 cursor-pointer">
+              <input type="checkbox" id="chkMealLunch" class="auto-save-input w-4 h-4 text-amber-600 rounded border-slate-300">
+              <span class="text-xs font-semibold text-slate-700">🍱 午餐</span>
+            </label>
+            <label class="flex items-center space-x-2 p-2 rounded-xl bg-slate-50 hover:bg-slate-100 cursor-pointer">
+              <input type="checkbox" id="chkMealDinner" class="auto-save-input w-4 h-4 text-amber-600 rounded border-slate-300">
+              <span class="text-xs font-semibold text-slate-700">🥗 晚餐</span>
+            </label>
+            <label class="flex items-center space-x-2 p-2 rounded-xl bg-slate-50 hover:bg-slate-100 cursor-pointer">
+              <input type="checkbox" id="chkMealWorkout" class="auto-save-input w-4 h-4 text-amber-600 rounded border-slate-300">
+              <span class="text-xs font-semibold text-slate-700">🍌 練後加餐</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="space-y-2 pt-2 border-t border-slate-100">
+          <label class="flex items-center space-x-3 p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" id="chkDietVeg" class="auto-save-input w-4 h-4 text-amber-600 rounded border-slate-300">
+            <span class="text-xs font-semibold text-slate-700">🥦 蔬菜足量 (每餐 1~2 拳頭)</span>
+          </label>
+          <label class="flex items-center space-x-3 p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" id="chkDietNoLate" class="auto-save-input w-4 h-4 text-amber-600 rounded border-slate-300">
+            <span class="text-xs font-semibold text-slate-700">🌙 睡前 3 小時無宵夜/暴飲暴食</span>
+          </label>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">飲食備忘／外食記錄：</label>
+          <textarea id="txtDietNotes" rows="2" placeholder="備註今日菜單、營養感受..."
+            class="auto-save-input w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500"></textarea>
+        </div>
+
+        <div class="space-y-2 pt-2 border-t border-slate-100">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-700 flex items-center space-x-1">
+              <i class="fa-solid fa-camera text-amber-500"></i>
+              <span>飲食照片記錄</span>
+            </span>
+            <label class="cursor-pointer px-2.5 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded-lg text-xs font-semibold flex items-center space-x-1 active:scale-95 transition-all">
+              <i class="fa-solid fa-plus text-[10px]"></i>
+              <span>上傳照片</span>
+              <input type="file" accept="image/*" class="hidden" onchange="handlePhotoSelected(event, 'diet')">
+            </label>
+          </div>
+          <div id="dietPhotoGrid" class="grid grid-cols-3 gap-2"></div>
+        </div>
+      </section>
+
+      <!-- 紀錄面板 3：運動任務 -->
+      <section id="panelWorkout" class="hidden bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <span class="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center text-xs">
+              <i class="fa-solid fa-fire"></i>
+            </span>
+            <h3 class="font-bold text-sm text-slate-800">運動項目明細</h3>
+          </div>
+          <div class="text-xs font-bold text-rose-600 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-200">
+            總時長：<span id="lblTotalWorkoutMinutes">0</span> 分鐘
+          </div>
+        </div>
+
+        <div id="workoutItemsContainer" class="space-y-2.5"></div>
+
+        <button onclick="addWorkoutItem()"
+          class="w-full py-2.5 rounded-xl border-2 border-dashed border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold flex items-center justify-center space-x-1 active:scale-[0.99] transition-all">
+          <i class="fa-solid fa-plus text-xs"></i>
+          <span>新增運動項目</span>
+        </button>
+
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1.5">
+          <div class="flex justify-between items-center text-xs font-semibold text-slate-700">
+            <div class="flex items-center space-x-1.5">
+              <span>自覺用力程度 (RPE)：</span>
+              <span id="lblRpeValue" class="font-bold text-slate-400">未設定（休息日）</span>
+            </div>
+            <button id="btnClearRpe" type="button" onclick="clearRpeSetting()"
+              class="hidden px-2 py-0.5 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-600 text-[10px] font-bold active:scale-95 transition-all">
+              清除
+            </button>
+          </div>
+          <input id="rangeRpe" type="range" min="1" max="10" value="5"
+            class="w-full accent-rose-500 cursor-pointer opacity-60 transition-opacity" oninput="onRpeSliderInput(this.value)">
+          <div class="flex justify-between text-[10px] text-slate-400">
+            <span>1 輕鬆</span>
+            <span>5 中度喘氣</span>
+            <span>10 極限竭盡</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2">
+          <label class="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 hover:bg-slate-100 cursor-pointer text-center">
+            <input type="checkbox" id="chkWarmup" class="auto-save-input w-4 h-4 text-rose-600 rounded border-slate-300 mb-1">
+            <span class="text-[11px] font-bold text-slate-700">🤸 動態暖身</span>
+          </label>
+          <label class="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 hover:bg-slate-100 cursor-pointer text-center">
+            <input type="checkbox" id="chkMainWorkout" class="auto-save-input w-4 h-4 text-rose-600 rounded border-slate-300 mb-1">
+            <span class="text-[11px] font-bold text-slate-700">🏋️ 課表完成</span>
+          </label>
+          <label class="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 hover:bg-slate-100 cursor-pointer text-center">
+            <input type="checkbox" id="chkCooldown" class="auto-save-input w-4 h-4 text-rose-600 rounded border-slate-300 mb-1">
+            <span class="text-[11px] font-bold text-slate-700">🧘 收操伸展</span>
+          </label>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">課表心得／重量紀錄：</label>
+          <textarea id="txtWorkoutLog" rows="2" placeholder="深蹲組數、跑步配速..."
+            class="auto-save-input w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500"></textarea>
+        </div>
+
+        <div class="space-y-2 pt-2 border-t border-slate-100">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-700 flex items-center space-x-1">
+              <i class="fa-solid fa-camera text-rose-500"></i>
+              <span>運動照片／體態打卡</span>
+            </span>
+            <label class="cursor-pointer px-2.5 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-lg text-xs font-semibold flex items-center space-x-1 active:scale-95 transition-all">
+              <i class="fa-solid fa-plus text-[10px]"></i>
+              <span>上傳照片</span>
+              <input type="file" accept="image/*" class="hidden" onchange="handlePhotoSelected(event, 'workout')">
+            </label>
+          </div>
+          <div id="workoutPhotoGrid" class="grid grid-cols-3 gap-2"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 模式二：改造趨勢區塊 -->
+    <div id="trendsView" class="hidden space-y-3">
+      <div class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div class="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl">
+          <button id="btnRange7" onclick="setTrendRange(7)" class="px-3 py-1 rounded-lg text-xs font-bold bg-white text-emerald-700 shadow-xs">近 7 天</button>
+          <button id="btnRange14" onclick="setTrendRange(14)" class="px-3 py-1 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800">近 14 天</button>
+          <button id="btnRange30" onclick="setTrendRange(30)" class="px-3 py-1 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800">近 30 天</button>
+        </div>
+        <button onclick="openGoalModal()" class="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center space-x-1">
+          <i class="fa-solid fa-sliders text-[11px]"></i>
+          <span>目標設定</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 text-center">
+        <div class="bg-rose-50/80 p-3 rounded-2xl border border-rose-100">
+          <div class="text-[10px] font-bold text-rose-500">訓練累計</div>
+          <div class="text-base font-black text-rose-700 mt-0.5"><span id="sumWorkoutMinutes">0</span> <span class="text-[10px]">分</span></div>
+        </div>
+        <div class="bg-sky-50/80 p-3 rounded-2xl border border-sky-100">
+          <div class="text-[10px] font-bold text-sky-500">平均飲水</div>
+          <div class="text-base font-black text-sky-700 mt-0.5"><span id="avgWaterAmount">0</span> <span class="text-[10px]">ml</span></div>
+        </div>
+        <div class="bg-amber-50/80 p-3 rounded-2xl border border-amber-100">
+          <div class="text-[10px] font-bold text-amber-600">均熱量 / 蛋白</div>
+          <div class="text-xs font-black text-amber-800 mt-0.5"><span id="avgCalories">0</span> kcal</div>
+          <div class="text-[10px] font-bold text-amber-700"><span id="avgProtein">0</span> g</div>
+        </div>
+      </div>
+
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+        <h4 class="text-xs font-bold text-slate-800">💧 每日飲水量 (ml)</h4>
+        <div class="relative h-44 w-full"><canvas id="chartWater"></canvas></div>
+      </div>
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+        <h4 class="text-xs font-bold text-slate-800">🍱 熱量與蛋白質趨勢</h4>
+        <div class="relative h-48 w-full"><canvas id="chartDiet"></canvas></div>
+      </div>
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+        <h4 class="text-xs font-bold text-slate-800">⚡ 每日運動時長 (分鐘)</h4>
+        <div class="relative h-44 w-full"><canvas id="chartWorkout"></canvas></div>
+      </div>
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+        <h4 class="text-xs font-bold text-slate-800">🎯 訓練負荷強度 (RPE 1~10)</h4>
+        <div class="relative h-40 w-full"><canvas id="chartRpe"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 模式三：知識百科區塊 -->
+    <div id="knowledgeView" class="hidden space-y-3">
+      <div class="bg-gradient-to-br from-indigo-50 to-purple-50 p-3.5 rounded-2xl border border-indigo-100 shadow-sm space-y-2.5">
+        <div class="flex items-center space-x-2">
+          <i class="fa-brands fa-google text-indigo-600"></i>
+          <span class="text-xs font-bold text-indigo-900">運動與營養 Google 一鍵速查</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <input id="txtGoogleQuery" type="text" placeholder="輸入想了解的動作或食材..."
+            class="flex-1 px-3 py-2 text-xs bg-white border border-indigo-200 rounded-xl focus:ring-2 focus:ring-indigo-500">
+          <button onclick="executeGoogleSearch()"
+            class="px-3 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 active:scale-95 transition-all shrink-0">
+            查詢
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 🔔 自訂智慧檢核排程彈跳視窗 (重點核心) -->
+  <div id="notificationModal" class="hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-xl max-h-[90vh] flex flex-col overflow-hidden">
+      <!-- 頂部標題列 -->
+      <div class="flex items-center justify-between p-4 border-b border-slate-100">
+        <h3 class="font-bold text-sm text-slate-800 flex items-center space-x-2">
+          <i class="fa-regular fa-bell text-indigo-600"></i>
+          <span>自訂智慧檢核推播排程</span>
+        </h3>
+        <button onclick="closeNotificationModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <div class="p-4 space-y-4 overflow-y-auto flex-1 text-xs">
+        <!-- 手機推播啟用狀態橫幅 -->
+        <div id="pushStatusBanner" class="p-3 rounded-xl border flex items-center justify-between bg-indigo-50 border-indigo-100">
+          <div class="flex items-center space-x-2.5">
+            <span class="text-lg">📲</span>
+            <div>
+              <div id="pushStatusText" class="font-bold text-indigo-900">推播狀態：偵測中...</div>
+              <div class="text-[10px] text-indigo-600">允許授權後，系統將在未達標時跳出橫幅提醒</div>
+            </div>
+          </div>
+          <button id="btnEnablePush" onclick="requestPushPermission()"
+            class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs active:scale-95 transition-all shrink-0">
+            開啟通知
+          </button>
+        </div>
+
+        <!-- 現有檢核規則清單 -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-bold text-slate-700">當前排程檢核清單：</span>
+            <button onclick="openAddRuleForm()" class="text-indigo-600 hover:text-indigo-700 font-bold flex items-center space-x-1">
+              <i class="fa-solid fa-plus text-[10px]"></i>
+              <span>新增檢查時機</span>
+            </button>
+          </div>
+          <div id="notificationRulesList" class="space-y-2"></div>
+        </div>
+
+        <!-- 新增檢核規則表單 (隱藏/展開) -->
+        <div id="addRuleForm" class="hidden bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-3">
+          <div class="font-bold text-slate-800 text-xs flex items-center justify-between">
+            <span>➕ 建立新檢核規則</span>
+            <button onclick="closeAddRuleForm()" class="text-slate-400 hover:text-slate-600 text-xs"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block font-semibold text-slate-600 mb-1">⏰ 巡檢時間：</label>
+              <input id="inputRuleTime" type="time" value="21:30"
+                class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-800 focus:ring-1 focus:ring-indigo-500">
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-600 mb-1">🎯 檢核指標：</label>
+              <select id="selectRuleType" onchange="onRuleTypeChange(this.value)"
+                class="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-800 focus:ring-1 focus:ring-indigo-500">
+                <option value="water">💧 飲水量落後</option>
+                <option value="streak">🔥 連勝即將中斷</option>
+                <option value="protein">🥩 蛋白質未達標</option>
+                <option value="progress">🏆 今日總進度未滿</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 門檻數值設定 -->
+          <div id="ruleThresholdContainer">
+            <label id="lblRuleThreshold" class="block font-semibold text-slate-600 mb-1">未滿多少 ml 時提醒：</label>
+            <input id="inputRuleTarget" type="number" value="2000" step="100"
+              class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-800 focus:ring-1 focus:ring-indigo-500">
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-600 mb-1">自訂警示文案 (選填)：</label>
+            <input id="inputRuleMsg" type="text" placeholder="留空則使用系統預設督促文案..." maxlength="30"
+              class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 text-xs focus:ring-1 focus:ring-indigo-500">
+          </div>
+
+          <button onclick="saveNewRule()"
+            class="w-full py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 active:scale-95 transition-all shadow-sm flex items-center justify-center space-x-1">
+            <i class="fa-solid fa-check"></i>
+            <span>儲存這條規則</span>
+          </button>
+        </div>
+
+        <!-- 測試推播功能 -->
+        <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+          <span class="text-[11px] text-slate-500">測試手機是否能收到橫幅：</span>
+          <button onclick="sendTestPushToSelf()" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs active:scale-95 transition-all">
+            發送測試推播
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 個人改造目標設定彈窗 -->
+  <div id="goalModal" class="hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-sm rounded-t-3xl sm:rounded-3xl shadow-xl overflow-hidden p-4 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="font-bold text-sm text-slate-800 flex items-center space-x-2">
+          <i class="fa-solid fa-sliders text-emerald-600"></i>
+          <span>個人改造目標設定</span>
+        </h3>
+        <button onclick="closeGoalModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">💧 每日飲水目標 (ml)：</label>
+          <input id="setGoalWater" type="number" step="100" placeholder="例如: 2500"
+            class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-sky-700 focus:ring-2 focus:ring-emerald-500">
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">🔥 每日目標熱量 (kcal)：</label>
+          <input id="setGoalCalories" type="number" step="50" placeholder="例如: 1800"
+            class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-amber-700 focus:ring-2 focus:ring-emerald-500">
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">🥩 每日目標蛋白質 (g)：</label>
+          <input id="setGoalProtein" type="number" step="5" placeholder="例如: 110"
+            class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-rose-700 focus:ring-2 focus:ring-emerald-500">
+        </div>
+      </div>
+
+      <div class="pt-2">
+        <button onclick="saveGoalSettings()"
+          class="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 active:scale-95 transition-all shadow-sm flex items-center justify-center space-x-1">
+          <i class="fa-solid fa-check text-xs"></i>
+          <span>儲存並更新目標</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新增水杯快捷鍵彈窗 -->
+  <div id="addWaterModal" class="hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-sm rounded-t-3xl sm:rounded-3xl shadow-xl overflow-hidden p-4 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="font-bold text-sm text-slate-800 flex items-center space-x-2">
+          <i class="fa-solid fa-droplet text-sky-600"></i>
+          <span>新增常用容量快捷鍵</span>
+        </h3>
+        <button onclick="closeAddWaterQuickModal()" class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center">
+          <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">💧 單次補水量 (ml)：</label>
+          <input id="inputQuickWaterAmount" type="number" step="50" placeholder="例如: 450"
+            class="w-full px-3 py-2 border border-slate-200 rounded-xl font-bold text-sky-700 focus:ring-2 focus:ring-sky-500">
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">🏷️ 水杯別名 (選填)：</label>
+          <input id="inputQuickWaterLabel" type="text" maxlength="8" placeholder="例如: 保溫杯"
+            class="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-sky-500">
+        </div>
+      </div>
+      <div class="pt-2">
+        <button onclick="saveNewQuickWaterButton()"
+          class="w-full py-2.5 bg-sky-600 text-white rounded-xl text-xs font-bold hover:bg-sky-700 active:scale-95 transition-all shadow-sm">
+          加入常用清單
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 照片大圖檢視燈箱 -->
+  <div id="photoLightboxModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3" onclick="closePhotoLightbox()">
+    <div class="relative max-w-md w-full max-h-[90vh] flex flex-col items-center" onclick="event.stopPropagation()">
+      <button onclick="closePhotoLightbox()" class="absolute -top-10 right-0 w-8 h-8 rounded-full bg-white/20 text-white hover:bg-white/30 flex items-center justify-center">
+        <i class="fa-solid fa-xmark text-sm"></i>
+      </button>
+      <img id="lightboxImg" src="" alt="照片預覽" class="max-w-full max-h-[82vh] rounded-2xl object-contain shadow-2xl border border-white/10">
+    </div>
+  </div>
+
+  <div id="toastContainer" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center space-y-2 pointer-events-none"></div>
+
+  <script>
+    // 後端 Apps Script API 預設網址（若有部署後的 Apps Script 網址可填入引號內，介面不會顯示輸入框）
+    var CONFIG_GAS_API_URL = '';
+
+    var COLOR_PALETTE = [
+      { name: '杏桃裸粉', color: '#f2dad8' },
+      { name: '溫暖奶杏', color: '#fedfc3' },
+      { name: '奶油淡黃', color: '#f0f2d8' },
+      { name: '青檸抹茶', color: '#def5b8' },
+      { name: '薄荷奶綠', color: '#d8f2da' },
+      { name: '湖水粉綠', color: '#bff5e3' },
+      { name: '晨霧冰藍', color: '#d8f0f2' },
+      { name: '晴空粉藍', color: '#c2e2fa' },
+      { name: '薰衣草藍', color: '#dad8f2' },
+      { name: '淺紫桔梗', color: '#e6cbf7' },
+      { name: '柔粉丁香', color: '#f2d8f0' },
+      { name: '櫻花淡粉', color: '#fccadb' }
+    ];
+
+    var safeStorage = {
+      getItem: function(k) { try { return window.localStorage ? window.localStorage.getItem(k) : null; } catch(e) { return null; } },
+      setItem: function(k, v) { try { if (window.localStorage) window.localStorage.setItem(k, v); } catch(e) {} }
+    };
+
+    var appState = {
+      gasApiUrl: safeStorage.getItem('fitTrack_gas_api_url') || CONFIG_GAS_API_URL || '',
+      users: [],
+      currentUser: null,
+      currentDate: new Date().toISOString().split('T')[0],
+      records: {},
+      dailyWaterGoal: 2500,
+      userGoals: { water: 2500, calories: 1800, protein: 110 },
+      selectedNewUserColor: COLOR_PALETTE[4].color,
+      currentWorkouts: [],
+      currentDietPhotos: [],
+      currentWorkoutPhotos: [],
+      currentRpeValue: '',
+      trendDays: 7,
+      notificationRules: [],
+      quickWaterOptions: [
+        { amount: 200, label: '+200ml' },
+        { amount: 350, label: '+350ml' },
+        { amount: 500, label: '+500ml' }
+      ]
+    };
+
+    var chartInstances = { water: null, diet: null, workout: null, rpe: null };
+    var autoSaveDebounceTimer = null;
+
+    function saveGasApiUrl(val) {
+      appState.gasApiUrl = (val || '').trim();
+      safeStorage.setItem('fitTrack_gas_api_url', appState.gasApiUrl);
+      showToast('已更新後端 API 網址');
+      initUsers();
+    }
+
+    function callBackend(action, data, callback) {
+      // 1. 若在 GAS 內部環境執行
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        var runner = google.script.run
+          .withSuccessHandler(function(res) { if (callback) callback(res); })
+          .withFailureHandler(function(err) { if (callback) callback({ success: false, error: err }); });
+
+        if (action === 'getUsers') runner.apiGetUsers();
+        else if (action === 'addUser') runner.apiAddUser(data);
+        else if (action === 'saveDailyCheckin') runner.apiSaveDailyCheckin(data);
+        else if (action === 'getUserRecords') runner.apiGetUserRecords(data.userId, data.userName);
+        else if (action === 'uploadPhoto') runner.apiUploadPhoto(data.base64Data, data.filename, data.userName, data.checkinDate, data.category);
+        else if (action === 'savePushId') runner.apiSavePushId(data.userId, data.playerId);
+        else if (action === 'saveNotificationRules') runner.apiSaveNotificationRules(data.userId, data.rules);
+        else if (action === 'sendTestPush') runner.apiSendTestPush(data.playerId);
+        return;
+      }
+
+      // 2. 若在 GitHub Pages 獨立網址環境執行
+      if (!appState.gasApiUrl) {
+        console.warn('尚未設定後端 Apps Script API 網址，暫以本機模式運行');
+        if (callback) callback({ success: true, localOnly: true });
+        return;
+      }
+
+      var payload = Object.assign({ action: action }, data || {});
+      fetch(appState.gasApiUrl, {
+        method: 'POST',
+        mode: 'no-cors', // Apps Script 重導向相容模式
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function() {
+        if (callback) callback({ success: true });
+      }).catch(function(err) {
+        if (callback) callback({ success: false, error: err.toString() });
+      });
+    }
+
+    function showToast(msg, type) {
+      type = type || 'info';
+      var container = document.getElementById('toastContainer');
+      if (!container) return;
+      var toast = document.createElement('div');
+      var bg = type === 'warn' ? 'bg-amber-600' : (type === 'error' ? 'bg-rose-600' : 'bg-slate-800');
+      toast.className = bg + ' text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg transition-all transform translate-y-2 opacity-0 flex items-center space-x-1.5 pointer-events-auto';
+      toast.innerHTML = '<i class="fa-solid fa-circle-info text-[11px]"></i><span>' + msg + '</span>';
+      container.appendChild(toast);
+      requestAnimationFrame(function() { toast.classList.remove('translate-y-2', 'opacity-0'); });
+      setTimeout(function() {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(function() { toast.remove(); }, 300);
+      }, 2500);
+    }
+
+    function updatePushStatusUI(isOptedIn) {
+      var banner = document.getElementById('pushStatusBanner');
+      var txt = document.getElementById('pushStatusText');
+      var btn = document.getElementById('btnEnablePush');
+      if (!banner || !txt || !btn) return;
+
+      if (window.oneSignalDomainRestricted) {
+        banner.className = 'p-3 rounded-xl border flex items-center justify-between bg-slate-100 border-slate-200';
+        txt.textContent = '推播狀態：預覽模式（未在 GitHub 網域）';
+        txt.className = 'font-bold text-slate-700';
+        btn.textContent = '正式網域啟用';
+        btn.className = 'px-3 py-1.5 rounded-lg bg-slate-200 text-slate-500 font-bold text-xs shrink-0 cursor-default';
+        btn.disabled = true;
+        return;
+      }
+
+      if (isOptedIn) {
+        banner.className = 'p-3 rounded-xl border flex items-center justify-between bg-emerald-50 border-emerald-100';
+        txt.textContent = '推播狀態：已啟用並連線！';
+        txt.className = 'font-bold text-emerald-900';
+        btn.textContent = '已就緒';
+        btn.className = 'px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold text-xs shrink-0 cursor-default opacity-90';
+        btn.disabled = true;
+      } else {
+        banner.className = 'p-3 rounded-xl border flex items-center justify-between bg-indigo-50 border-indigo-100';
+        txt.textContent = '推播狀態：尚未授權通知';
+        txt.className = 'font-bold text-indigo-900';
+        btn.textContent = '開啟通知';
+        btn.className = 'px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs active:scale-95 transition-all shrink-0';
+        btn.disabled = false;
+      }
+    }
+
+    async function checkPushPermissionStatus() {
+      if (window.oneSignalDomainRestricted) {
+        updatePushStatusUI(false);
+        return;
+      }
+      if (typeof OneSignal !== 'undefined' && OneSignal.User && OneSignal.User.PushSubscription) {
+        const optedIn = OneSignal.User.PushSubscription.optedIn;
+        updatePushStatusUI(optedIn);
+      } else {
+        updatePushStatusUI(false);
+      }
+    }
+
+    async function requestPushPermission() {
+      if (window.oneSignalDomainRestricted) {
+        showToast('推播功能受 OneSignal 限制，請在發布後的 https://cpyang210.github.io/ 網址中開啟使用！', 'warn');
+        return;
+      }
+      try {
+        if (typeof OneSignal !== 'undefined' && OneSignal.Notifications) {
+          await OneSignal.Notifications.requestPermission();
+          const optedIn = OneSignal.User.PushSubscription.optedIn;
+          updatePushStatusUI(optedIn);
+          if (optedIn) {
+            const playerId = OneSignal.User.PushSubscription.id;
+            if (appState.currentUser && playerId) {
+              appState.currentUser.playerId = playerId;
+              syncPushIdToBackend(appState.currentUser.id, playerId);
+              showToast('已成功授權手機推播！');
+            }
+          }
+        } else {
+          showToast('推播模組載入中，請稍候重試', 'warn');
+        }
+      } catch (e) {
+        showToast('無法請求通知權限: ' + e.message, 'error');
+      }
+    }
+
+    function syncPushIdToBackend(userId, playerId) {
+      callBackend('savePushId', { userId: userId, playerId: playerId }, function(res) {
+        console.log('Push ID 同步結果:', res);
+      });
+    }
+
+    function sendTestPushToSelf() {
+      const pid = appState.currentUser ? appState.currentUser.playerId : null;
+      if (!pid) {
+        showToast('請先點擊「開啟通知」授權此手機！', 'warn');
+        return;
+      }
+      showToast('正在發送測試推播...');
+      callBackend('sendTestPush', { playerId: pid }, function(res) {
+        showToast('推播指令已發送，請留意手機橫幅！');
+      });
+    }
+
+    function openNotificationModal() {
+      checkPushPermissionStatus();
+      loadNotificationRules();
+      document.getElementById('notificationModal').classList.remove('hidden');
+    }
+
+    function closeNotificationModal() {
+      document.getElementById('notificationModal').classList.add('hidden');
+    }
+
+    function loadNotificationRules() {
+      if (!appState.currentUser) return;
+      var saved = safeStorage.getItem('fitTrack_notif_rules_' + appState.currentUser.id);
+      if (saved) {
+        try {
+          appState.notificationRules = JSON.parse(saved) || [];
+        } catch(e) { appState.notificationRules = []; }
+      } else if (appState.currentUser.notificationRules) {
+        try {
+          appState.notificationRules = JSON.parse(appState.currentUser.notificationRules) || [];
+        } catch(e) { appState.notificationRules = []; }
+      } else {
+        // 預設給兩條最實用的檢核範本
+        appState.notificationRules = [
+          { id: 'r1', enabled: true, time: '21:30', conditionType: 'streak', targetValue: 0, customMsg: '' },
+          { id: 'r2', enabled: true, time: '15:00', conditionType: 'water', targetValue: 1500, customMsg: '' }
+        ];
+      }
+      renderNotificationRulesList();
+    }
+
+    function renderNotificationRulesList() {
+      var container = document.getElementById('notificationRulesList');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (!appState.notificationRules || appState.notificationRules.length === 0) {
+        container.innerHTML = '<div class="p-3 text-center text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-xs">尚無設定檢核時機，點擊上方新增</div>';
+        return;
+      }
+
+      var typeNames = {
+        water: '💧 飲水量落後',
+        streak: '🔥 連勝防中斷',
+        protein: '🥩 蛋白質未達標',
+        progress: '🏆 總維修進度未滿'
+      };
+
+      appState.notificationRules.forEach(function(rule, index) {
+        var card = document.createElement('div');
+        card.className = 'flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white shadow-2xs';
+
+        var detailText = '';
+        if (rule.conditionType === 'water') detailText = '未達 ' + (rule.targetValue || 2000) + ' ml 時警告';
+        else if (rule.conditionType === 'streak') detailText = '當日尚未打卡時警告';
+        else if (rule.conditionType === 'protein') detailText = '未達 ' + (rule.targetValue || 100) + ' g 時警告';
+        else if (rule.conditionType === 'progress') detailText = '進度未滿 ' + (rule.targetValue || 80) + ' % 時警告';
+
+        card.innerHTML = 
+          '<div class="flex items-center space-x-2.5">' +
+            '<input type="checkbox" ' + (rule.enabled ? 'checked' : '') + ' onchange="toggleRuleEnabled(' + index + ', this.checked)" class="w-4 h-4 text-indigo-600 rounded">' +
+            '<div>' +
+              '<div class="flex items-center space-x-1.5 font-bold text-slate-800">' +
+                '<span>' + (typeNames[rule.conditionType] || '檢核提醒') + '</span>' +
+                '<span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-extrabold">' + rule.time + '</span>' +
+              '</div>' +
+              '<div class="text-[10px] text-slate-500">' + detailText + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<button onclick="deleteRule(' + index + ')" class="w-7 h-7 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-colors">' +
+            '<i class="fa-solid fa-trash-can text-xs"></i>' +
+          '</button>';
+        container.appendChild(card);
+      });
+    }
+
+    function toggleRuleEnabled(index, isChecked) {
+      if (!appState.notificationRules[index]) return;
+      appState.notificationRules[index].enabled = isChecked;
+      saveRulesState();
+    }
+
+    function deleteRule(index) {
+      appState.notificationRules.splice(index, 1);
+      renderNotificationRulesList();
+      saveRulesState();
+      showToast('已移除該條提醒規則');
+    }
+
+    function openAddRuleForm() {
+      document.getElementById('addRuleForm').classList.remove('hidden');
+    }
+
+    function closeAddRuleForm() {
+      document.getElementById('addRuleForm').classList.add('hidden');
+    }
+
+    function onRuleTypeChange(type) {
+      var lbl = document.getElementById('lblRuleThreshold');
+      var inp = document.getElementById('inputRuleTarget');
+      var container = document.getElementById('ruleThresholdContainer');
+      if (type === 'streak') {
+        container.classList.add('hidden');
+      } else {
+        container.classList.remove('hidden');
+        if (type === 'water') {
+          lbl.textContent = '未滿多少 ml 時提醒：';
+          inp.value = '2000';
+          inp.step = '100';
+        } else if (type === 'protein') {
+          lbl.textContent = '未滿多少 g 蛋白質時提醒：';
+          inp.value = '100';
+          inp.step = '5';
+        } else {
+          lbl.textContent = '維修進度未滿多少 % 時提醒：';
+          inp.value = '80';
+          inp.step = '5';
+        }
+      }
+    }
+
+    function saveNewRule() {
+      var time = document.getElementById('inputRuleTime').value;
+      var type = document.getElementById('selectRuleType').value;
+      var target = Number(document.getElementById('inputRuleTarget').value) || 0;
+      var msg = document.getElementById('inputRuleMsg').value.trim();
+
+      if (!time) {
+        showToast('請指定檢查時間！', 'warn');
+        return;
+      }
+
+      var newRule = {
+        id: 'rule_' + Date.now().toString().slice(-4),
+        enabled: true,
+        time: time,
+        conditionType: type,
+        targetValue: target,
+        customMsg: msg
+      };
+
+      appState.notificationRules.push(newRule);
+      renderNotificationRulesList();
+      saveRulesState();
+      closeAddRuleForm();
+      showToast('已新增檢查排程！');
+    }
+
+    function saveRulesState() {
+      if (!appState.currentUser) return;
+      safeStorage.setItem('fitTrack_notif_rules_' + appState.currentUser.id, JSON.stringify(appState.notificationRules));
+      callBackend('saveNotificationRules', {
+        userId: appState.currentUser.id,
+        rules: appState.notificationRules
+      }, function(res) {
+        console.log('雲端排程同步完成');
+      });
+    }
+
+    function initUsers() {
+      renderColorPicker();
+      var localUsers = safeStorage.getItem('fitTrack_users');
+      if (localUsers) {
+        try { appState.users = JSON.parse(localUsers) || []; } catch(e) {}
+      }
+      renderUserCards();
+
+      callBackend('getUsers', {}, function(res) {
+        if (res && res.success && Array.isArray(res.users)) {
+          appState.users = res.users;
+          safeStorage.setItem('fitTrack_users', JSON.stringify(appState.users));
+          renderUserCards();
+        }
+      });
+    }
+
+    function renderUserCards() {
+      var container = document.getElementById('userCardsContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (!appState.users || appState.users.length === 0) {
+        container.innerHTML = 
+          '<div class="col-span-full py-6 text-center text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200">' +
+            '<i class="fa-regular fa-user text-xl text-slate-300 mb-1.5 block"></i>' +
+            '<span class="text-xs font-semibold text-slate-600">目前尚無成員身分</span>' +
+            '<p class="text-[10px] text-slate-400 mt-0.5">請在下方輸入姓名建立第一位進廠成員</p>' +
+          '</div>';
+        return;
+      }
+
+      appState.users.forEach(function(u) {
+        var card = document.createElement('div');
+        card.className = 'flex items-center justify-between p-3 bg-white rounded-2xl border border-slate-200 shadow-xs hover:border-emerald-300 hover:shadow-sm transition-all cursor-pointer group active:scale-[0.98]';
+        card.onclick = function() { loginAsUser(u.id); };
+
+        card.innerHTML = 
+          '<div class="flex items-center space-x-3">' +
+            '<div class="w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm text-slate-800 border border-black/5 shadow-2xs" style="background-color: ' + (u.avatarColor || '#d8f2da') + '">' +
+              (u.name || 'U').charAt(0) +
+            '</div>' +
+            '<div>' +
+              '<span class="text-sm font-bold text-slate-800 group-hover:text-emerald-700 transition-colors">' + u.name + '</span>' +
+              '<div class="text-[10px] text-slate-400 font-medium">點擊登入檢核</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="w-8 h-8 rounded-xl bg-slate-50 group-hover:bg-emerald-50 text-slate-400 group-hover:text-emerald-600 flex items-center justify-center transition-colors">' +
+            '<i class="fa-solid fa-arrow-right-to-bracket text-xs"></i>' +
+          '</div>';
+        container.appendChild(card);
+      });
+    }
+
+    function addNewUser() {
+      var input = document.getElementById('newUserNameInput');
+      var name = (input.value || '').trim();
+      if (!name) {
+        showToast('請輸入成員姓名！', 'warn');
+        return;
+      }
+
+      var newUser = {
+        id: 'usr_' + Date.now().toString().slice(-4),
+        name: name,
+        avatarColor: appState.selectedNewUserColor,
+        playerId: '',
+        notificationRules: '[]'
+      };
+
+      appState.users.push(newUser);
+      safeStorage.setItem('fitTrack_users', JSON.stringify(appState.users));
+      renderUserCards();
+      input.value = '';
+
+      callBackend('addUser', { user: newUser }, function(res) {
+        showToast('已新增成員：' + name);
+      });
+    }
+
+    function loginAsUser(userId) {
+      var user = appState.users.find(function(u) { return u.id === userId; });
+      if (!user) return;
+      appState.currentUser = user;
+
+      var badge = document.getElementById('currentUserBadge');
+      var avatarDot = document.getElementById('userAvatarDot');
+      var nameText = document.getElementById('userNameText');
+
+      if (badge && avatarDot && nameText) {
+        badge.classList.remove('hidden');
+        badge.classList.add('flex');
+        avatarDot.style.backgroundColor = user.avatarColor || COLOR_PALETTE[0].color;
+        avatarDot.textContent = (user.name || 'U').charAt(0);
+        nameText.textContent = user.name;
+      }
+
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('appSection').classList.remove('hidden');
+
+      loadUserGoals();
+      loadQuickWaterButtons();
+      loadDateData(appState.currentDate);
+
+      // 若使用者已有 Player ID，自動對接
+      if (typeof OneSignal !== 'undefined' && OneSignal.User && OneSignal.User.PushSubscription) {
+        const currentPid = OneSignal.User.PushSubscription.id;
+        if (currentPid && (!user.playerId || user.playerId !== currentPid)) {
+          user.playerId = currentPid;
+          syncPushIdToBackend(user.id, currentPid);
+        }
+      }
+
+      callBackend('getUserRecords', { userId: user.id, userName: user.name }, function(res) {
+        if (res && res.success && res.records) {
+          Object.assign(appState.records, res.records);
+          loadDateData(appState.currentDate);
+        }
+      });
+    }
+
+    function logoutUser() {
+      if (appState.currentUser) saveCheckin();
+      appState.currentUser = null;
+      document.getElementById('currentUserBadge').classList.add('hidden');
+      document.getElementById('appSection').classList.add('hidden');
+      document.getElementById('loginSection').classList.remove('hidden');
+      renderUserCards();
+    }
+
+    function loadDateData(dateStr) {
+      appState.currentDate = dateStr;
+      var displayTxt = document.getElementById('dateDisplayText');
+      var picker = document.getElementById('datePickerInput');
+      if (displayTxt) displayTxt.textContent = dateStr;
+      if (picker) picker.value = dateStr;
+
+      if (!appState.currentUser) return;
+      var key = appState.currentUser.id + '_' + dateStr;
+      var data = appState.records[key] || {
+        water: 0, calories: '', protein: '',
+        workouts: [{ type: '肌力重量訓練', minutes: '' }],
+        dietPhotos: [], workoutPhotos: []
+      };
+
+      updateWaterDisplay(data.water || 0);
+      document.getElementById('chkWaterMorning').checked = !!data.waterMorning;
+      document.getElementById('chkWaterWorkout').checked = !!data.waterWorkout;
+      document.getElementById('chkWaterNoSugar').checked = !!data.waterNoSugar;
+      document.getElementById('inputCalories').value = data.calories || '';
+      document.getElementById('inputProtein').value = data.protein || '';
+      document.getElementById('chkMealBreakfast').checked = !!data.mealBreakfast;
+      document.getElementById('chkMealLunch').checked = !!data.mealLunch;
+      document.getElementById('chkMealDinner').checked = !!data.mealDinner;
+      document.getElementById('chkMealWorkout').checked = !!data.mealWorkout;
+      document.getElementById('chkDietVeg').checked = !!data.dietVeg;
+      document.getElementById('chkDietNoLate').checked = !!data.dietNoLate;
+      document.getElementById('txtDietNotes').value = data.dietNotes || '';
+
+      appState.currentWorkouts = (Array.isArray(data.workouts) && data.workouts.length > 0)
+        ? JSON.parse(JSON.stringify(data.workouts))
+        : [{ type: '肌力重量訓練', minutes: data.workoutMinutes || '' }];
+      renderWorkoutItems();
+
+      appState.currentDietPhotos = Array.isArray(data.dietPhotos) ? data.dietPhotos.slice() : [];
+      renderPhotoGrid('diet');
+      appState.currentWorkoutPhotos = Array.isArray(data.workoutPhotos) ? data.workoutPhotos.slice() : [];
+      renderPhotoGrid('workout');
+
+      document.getElementById('chkWarmup').checked = !!data.warmup;
+      document.getElementById('chkMainWorkout').checked = !!data.mainWorkout;
+      document.getElementById('chkCooldown').checked = !!data.cooldown;
+      document.getElementById('txtWorkoutLog').value = data.workoutLog || '';
+
+      updateDietGoalProgress();
+      updateMaintenanceProgress();
+    }
+
+    function collectFormData() {
+      var waterAmt = Number(document.getElementById('displayWaterAmount').textContent) || 0;
+      var totalMins = 0;
+      appState.currentWorkouts.forEach(function(w) { totalMins += (Number(w.minutes) || 0); });
+
+      return {
+        userId: appState.currentUser ? appState.currentUser.id : '',
+        userName: appState.currentUser ? appState.currentUser.name : '',
+        date: appState.currentDate,
+        water: waterAmt,
+        waterMorning: document.getElementById('chkWaterMorning').checked,
+        waterWorkout: document.getElementById('chkWaterWorkout').checked,
+        waterNoSugar: document.getElementById('chkWaterNoSugar').checked,
+        calories: document.getElementById('inputCalories').value.trim(),
+        protein: document.getElementById('inputProtein').value.trim(),
+        mealBreakfast: document.getElementById('chkMealBreakfast').checked,
+        mealLunch: document.getElementById('chkMealLunch').checked,
+        mealDinner: document.getElementById('chkMealDinner').checked,
+        mealWorkout: document.getElementById('chkMealWorkout').checked,
+        dietVeg: document.getElementById('chkDietVeg').checked,
+        dietNoLate: document.getElementById('chkDietNoLate').checked,
+        dietNotes: document.getElementById('txtDietNotes').value.trim(),
+        workouts: appState.currentWorkouts,
+        workoutMinutes: totalMins,
+        workoutRpe: appState.currentRpeValue || '',
+        warmup: document.getElementById('chkWarmup').checked,
+        mainWorkout: document.getElementById('chkMainWorkout').checked,
+        cooldown: document.getElementById('chkCooldown').checked,
+        workoutLog: document.getElementById('txtWorkoutLog').value.trim(),
+        dietPhotos: appState.currentDietPhotos || [],
+        workoutPhotos: appState.currentWorkoutPhotos || []
+      };
+    }
+
+    function triggerAutoSave(immediate) {
+      if (autoSaveDebounceTimer) clearTimeout(autoSaveDebounceTimer);
+      if (immediate) saveCheckin();
+      else autoSaveDebounceTimer = setTimeout(saveCheckin, 1200);
+    }
+
+    function saveCheckin() {
+      if (!appState.currentUser) return;
+      var data = collectFormData();
+      appState.records[appState.currentUser.id + '_' + data.date] = data;
+      safeStorage.setItem('fitTrack_records', JSON.stringify(appState.records));
+      updateMaintenanceProgress();
+      callBackend('saveDailyCheckin', { data: data });
+    }
+
+    function switchDate(offset) {
+      var p = appState.currentDate.split('-');
+      var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+      d.setDate(d.getDate() + offset);
+      var next = d.toISOString().split('T')[0];
+      saveCheckin();
+      loadDateData(next);
+    }
+
+    function goToToday() {
+      saveCheckin();
+      loadDateData(new Date().toISOString().split('T')[0]);
+    }
+
+    function onDatePickerChange(v) {
+      if (v) { saveCheckin(); loadDateData(v); }
+    }
+
+    function updateWaterDisplay(val) {
+      var amt = Math.max(0, val);
+      document.getElementById('displayWaterAmount').textContent = amt;
+      var goal = appState.dailyWaterGoal || 2500;
+      var pct = Math.min(100, Math.round((amt / goal) * 100));
+      document.getElementById('waterProgressBar').style.width = pct + '%';
+      document.getElementById('waterPercentBadge').textContent = pct + '%';
+
+      var diff = goal - amt;
+      var lbl = document.getElementById('lblWaterDiff');
+      if (diff > 0) {
+        lbl.textContent = '💧 還差 ' + diff + ' ml 達標';
+        lbl.className = 'text-[11px] font-bold text-sky-600 mt-2 flex items-center justify-center space-x-1';
+      } else {
+        lbl.textContent = '🎉 恭喜達成今日補水目標！';
+        lbl.className = 'text-[11px] font-bold text-emerald-600 mt-2 flex items-center justify-center space-x-1';
+      }
+    }
+
+    function addWater(n) {
+      var cur = Number(document.getElementById('displayWaterAmount').textContent) || 0;
+      updateWaterDisplay(cur + n);
+      triggerAutoSave(true);
+    }
+
+    function resetWater() {
+      updateWaterDisplay(0);
+      triggerAutoSave(true);
+    }
+
+    function updateDietGoalProgress() {
+      var c = Number(document.getElementById('inputCalories').value) || 0;
+      var p = Number(document.getElementById('inputProtein').value) || 0;
+      var cGoal = appState.userGoals.calories || 1800;
+      var pGoal = appState.userGoals.protein || 110;
+
+      var cPct = Math.min(100, Math.round((c / cGoal) * 100));
+      var pPct = Math.min(100, Math.round((p / pGoal) * 100));
+
+      document.getElementById('barCalProgress').style.width = cPct + '%';
+      document.getElementById('pctCal').textContent = cPct + '%';
+      document.getElementById('barProteinProgress').style.width = pPct + '%';
+      document.getElementById('pctProtein').textContent = pPct + '%';
+    }
+
+    function updateMaintenanceProgress() {
+      var data = collectFormData();
+      var score = 0;
+      var w = Number(data.water) || 0;
+      score += Math.min(30, Math.round((w / (appState.dailyWaterGoal || 2500)) * 30));
+      if (Number(data.calories) > 0) score += 20;
+      if (Number(data.protein) > 0) score += 20;
+      if (Number(data.workoutMinutes) > 0 || data.mainWorkout) score += 30;
+
+      score = Math.min(100, score);
+      document.getElementById('maintenanceProgressBar').style.width = score + '%';
+      document.getElementById('maintenancePercentText').textContent = score + '%';
+
+      var badge = document.getElementById('maintenanceRatingBadge');
+      if (score === 0) badge.textContent = '🌱 剛進廠・準備啟動';
+      else if (score < 50) badge.textContent = '⚡ 動能注入中・步上軌道';
+      else if (score < 100) badge.textContent = '🔥 改造良好・狀態絕佳';
+      else badge.textContent = '🏆 極限升級完成・完美自律！';
+    }
+
+    function renderWorkoutItems() {
+      var container = document.getElementById('workoutItemsContainer');
+      var totalLbl = document.getElementById('lblTotalWorkoutMinutes');
+      if (!container) return;
+      container.innerHTML = '';
+      var total = 0;
+
+      appState.currentWorkouts.forEach(function(item, idx) {
+        total += (Number(item.minutes) || 0);
+        var row = document.createElement('div');
+        row.className = 'flex items-center space-x-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200';
+        row.innerHTML = 
+          '<select class="flex-1 px-2.5 py-1.5 text-xs font-bold bg-white border border-slate-200 rounded-lg"' +
+            ' onchange="updateWorkoutItem(' + idx + ', \'type\', this.value)">' +
+            '<option value="肌力重量訓練"' + (item.type === '肌力重量訓練' ? ' selected' : '') + '>🏋️ 肌力重量訓練</option>' +
+            '<option value="有氧耐力訓練"' + (item.type === '有氧耐力訓練' ? ' selected' : '') + '>🏃 有氧耐力訓練</option>' +
+            '<option value="高強度間歇(HIIT)"' + (item.type === '高強度間歇(HIIT)' ? ' selected' : '') + '>⚡ 高強度間歇</option>' +
+          '</select>' +
+          '<input type="number" placeholder="分" value="' + (item.minutes || '') + '"' +
+            ' class="w-16 px-2 py-1.5 text-xs font-bold text-center bg-white border border-slate-200 rounded-lg"' +
+            ' oninput="updateWorkoutItem(' + idx + ', \'minutes\', this.value)">' +
+          '<button onclick="removeWorkoutItem(' + idx + ')" class="text-slate-400 hover:text-rose-600 p-1"><i class="fa-solid fa-trash-can text-xs"></i></button>';
+        container.appendChild(row);
+      });
+      if (totalLbl) totalLbl.textContent = total;
+    }
+
+    function addWorkoutItem() {
+      appState.currentWorkouts.push({ type: '肌力重量訓練', minutes: '' });
+      renderWorkoutItems();
+      triggerAutoSave();
+    }
+
+    function removeWorkoutItem(idx) {
+      if (appState.currentWorkouts.length > 1) appState.currentWorkouts.splice(idx, 1);
+      renderWorkoutItems();
+      triggerAutoSave();
+    }
+
+    function updateWorkoutItem(idx, f, v) {
+      if (appState.currentWorkouts[idx]) {
+        appState.currentWorkouts[idx][f] = v;
+        renderWorkoutItems();
+        triggerAutoSave();
+      }
+    }
+
+    function onRpeSliderInput(v) {
+      appState.currentRpeValue = String(v);
+      document.getElementById('lblRpeValue').textContent = v + ' 分強度';
+      document.getElementById('btnClearRpe').classList.remove('hidden');
+      triggerAutoSave();
+    }
+
+    function clearRpeSetting() {
+      appState.currentRpeValue = '';
+      document.getElementById('lblRpeValue').textContent = '未設定（休息日）';
+      document.getElementById('btnClearRpe').classList.add('hidden');
+      triggerAutoSave(true);
+    }
+
+    function renderPhotoGrid(type) {
+      var isDiet = type === 'diet';
+      var list = isDiet ? appState.currentDietPhotos : appState.currentWorkoutPhotos;
+      var container = document.getElementById(isDiet ? 'dietPhotoGrid' : 'workoutPhotoGrid');
+      if (!container) return;
+      container.innerHTML = '';
+
+      list.forEach(function(url, idx) {
+        var div = document.createElement('div');
+        div.className = 'relative aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 cursor-pointer';
+        div.onclick = function() { openPhotoLightbox(url); };
+        div.innerHTML = 
+          '<img src="' + url + '" class="w-full h-full object-cover">' +
+          '<button onclick="event.stopPropagation(); removePhoto(' + idx + ', \'' + type + '\');" class="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-[10px] flex items-center justify-center">' +
+            '<i class="fa-solid fa-xmark"></i>' +
+          '</button>';
+        container.appendChild(div);
+      });
+    }
+
+    function removePhoto(idx, type) {
+      if (type === 'diet') appState.currentDietPhotos.splice(idx, 1);
+      else appState.currentWorkoutPhotos.splice(idx, 1);
+      renderPhotoGrid(type);
+      triggerAutoSave(true);
+    }
+
+    function handlePhotoSelected(event, type) {
+      var file = event.target.files && event.target.files[0];
+      if (!file || !appState.currentUser) return;
+      event.target.value = '';
+
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var base64 = e.target.result;
+        if (type === 'diet') appState.currentDietPhotos.push(base64);
+        else appState.currentWorkoutPhotos.push(base64);
+        renderPhotoGrid(type);
+        triggerAutoSave(true);
+
+        callBackend('uploadPhoto', {
+          base64Data: base64,
+          filename: file.name,
+          userName: appState.currentUser.name,
+          checkinDate: appState.currentDate,
+          category: type === 'diet' ? '飲食' : '運動'
+        }, function(res) {
+          if (res && res.success && res.url) {
+            showToast('照片已成功存入雲端相簿！');
+          }
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function openPhotoLightbox(url) {
+      document.getElementById('lightboxImg').src = url;
+      document.getElementById('photoLightboxModal').classList.remove('hidden');
+    }
+
+    function closePhotoLightbox() {
+      document.getElementById('photoLightboxModal').classList.add('hidden');
+    }
+
+    function switchMainTab(tab) {
+      ['record', 'trends', 'knowledge'].forEach(function(t) {
+        document.getElementById(t + 'View').classList.add('hidden');
+        document.getElementById('btnMode' + t.charAt(0).toUpperCase() + t.slice(1)).className = 'py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center space-x-1.5 transition-all text-slate-600';
+      });
+      document.getElementById(tab + 'View').classList.remove('hidden');
+      document.getElementById('btnMode' + tab.charAt(0).toUpperCase() + tab.slice(1)).className = 'py-2 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center space-x-1.5 transition-all shadow-sm bg-white text-emerald-700';
+    }
+
+    function switchRecordTab(tab) {
+      ['Water', 'Diet', 'Workout'].forEach(function(t) {
+        document.getElementById('panel' + t).classList.add('hidden');
+        document.getElementById('tab' + t + 'Btn').className = 'py-2 rounded-lg text-xs font-bold transition-all text-slate-500 flex items-center justify-center space-x-1';
+      });
+      var cap = tab.charAt(0).toUpperCase() + tab.slice(1);
+      document.getElementById('panel' + cap).classList.remove('hidden');
+      document.getElementById('tab' + cap + 'Btn').className = 'py-2 rounded-lg text-xs font-bold transition-all bg-white text-emerald-600 shadow-sm flex items-center justify-center space-x-1';
+    }
+
+    function renderColorPicker() {
+      var container = document.getElementById('colorPaletteContainer');
+      if (!container) return;
+      container.innerHTML = '';
+      COLOR_PALETTE.forEach(function(item) {
+        var btn = document.createElement('button');
+        btn.className = 'w-7 h-7 rounded-full border border-black/10';
+        btn.style.backgroundColor = item.color;
+        btn.onclick = function() {
+          appState.selectedNewUserColor = item.color;
+          document.getElementById('selectedColorName').textContent = item.name;
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    function loadUserGoals() {
+      document.getElementById('setGoalWater').value = appState.userGoals.water;
+      document.getElementById('setGoalCalories').value = appState.userGoals.calories;
+      document.getElementById('setGoalProtein').value = appState.userGoals.protein;
+    }
+
+    function openGoalModal() { document.getElementById('goalModal').classList.remove('hidden'); }
+    function closeGoalModal() { document.getElementById('goalModal').classList.add('hidden'); }
+    function saveGoalSettings() {
+      appState.userGoals.water = Number(document.getElementById('setGoalWater').value) || 2500;
+      appState.userGoals.calories = Number(document.getElementById('setGoalCalories').value) || 1800;
+      appState.userGoals.protein = Number(document.getElementById('setGoalProtein').value) || 110;
+      appState.dailyWaterGoal = appState.userGoals.water;
+      closeGoalModal();
+      updateWaterDisplay(Number(document.getElementById('displayWaterAmount').textContent) || 0);
+      updateDietGoalProgress();
+      showToast('目標已更新！');
+    }
+
+    function openAddWaterQuickModal() { document.getElementById('addWaterModal').classList.remove('hidden'); }
+    function closeAddWaterQuickModal() { document.getElementById('addWaterModal').classList.add('hidden'); }
+    function saveNewQuickWaterButton() {
+      var amt = Number(document.getElementById('inputQuickWaterAmount').value);
+      var lbl = document.getElementById('inputQuickWaterLabel').value.trim() || ('+' + amt + 'ml');
+      if (amt > 0) {
+        appState.quickWaterOptions.push({ amount: amt, label: lbl });
+        renderQuickWaterButtons();
+        closeAddWaterQuickModal();
+      }
+    }
+
+    function loadQuickWaterButtons() { renderQuickWaterButtons(); }
+    function renderQuickWaterButtons() {
+      var c = document.getElementById('waterQuickButtonsContainer');
+      if (!c) return;
+      c.innerHTML = '';
+      appState.quickWaterOptions.forEach(function(opt) {
+        var btn = document.createElement('button');
+        btn.className = 'px-3 py-2 rounded-xl bg-sky-100 text-sky-700 font-bold text-xs active:scale-95 transition-all';
+        btn.textContent = '+' + opt.amount + 'ml';
+        btn.onclick = function() { addWater(opt.amount); };
+        c.appendChild(btn);
+      });
+    }
+
+    window.addEventListener('load', function() {
+      initUsers();
+      document.querySelectorAll('.auto-save-input').forEach(function(el) {
+        el.addEventListener('change', function() { triggerAutoSave(true); });
+      });
+    });
+  </script>
+</body>
+</html>
